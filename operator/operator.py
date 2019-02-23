@@ -4,6 +4,22 @@ def attrgetter(attr):
         return getattr(obj, attr)
     return _attrgetter
 
+class itemgetter:
+    def __init__(self, item, *items):
+        if not items:
+            self._items = (item,)
+            def func(obj):
+                return obj[item]
+            self._call = func
+        else:
+            self._items = items = (item,) + items
+            def func(obj):
+                return tuple(obj[i] for i in items)
+            self._call = func
+
+    def __call__(self, obj):
+        return self._call(obj)
+
 
 def lt(a, b):
     return a < b
