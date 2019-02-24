@@ -126,6 +126,21 @@ class TestCase:
                 return
             raise
 
+    def assertRaisesRegex(self, exc, regexp, func=None, *args, **kwargs):
+        import re
+        if func is None:
+            return AssertRaisesContext(exc)
+
+        try:
+            func(*args, **kwargs)
+            assert False, "%r not raised" % exc
+        except Exception as e:
+            if not isinstance(e, exc):
+                raise
+            r = re.compile(exc_re)
+            if r.search(repr(e)):
+                return
+            raise
 
 
 def skip(msg):
