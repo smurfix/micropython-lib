@@ -37,7 +37,7 @@ class TestUnittestAssertions(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assertNotAlmostEqual(float('inf'), float('inf'))
 
-    def test_AmostEqualWithDelta(self):
+    def test_AlmostEqualWithDelta(self):
         self.assertAlmostEqual(1.1, 1.0, delta=0.5)
         self.assertAlmostEqual(1.0, 1.1, delta=0.5)
         self.assertNotAlmostEqual(1.1, 1.0, delta=0.05)
@@ -110,6 +110,21 @@ class TestUnittestAssertions(unittest.TestCase):
     @unittest.skip('test of skipping')
     def testSkip(self):
         self.assertFail('this should be skipped')
+
+    def testAssert(self):
+
+        e1 = None
+        try:
+            def func_under_test(a):
+                assert a > 10
+
+            self.assertRaises(AssertionError, func_under_test, 20)
+        except AssertionError as e:
+            e1 = e
+
+        if not e1 or "not raised" not in e1.args[0]:
+            self.fail("Expected to catch lack of AssertionError from assert in func_under_test")
+
 
 if __name__ == '__main__':
     unittest.main()

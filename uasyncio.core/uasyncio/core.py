@@ -1,3 +1,4 @@
+# (c) 2014-2018 Paul Sokolovsky. MIT license.
 import utime as time
 import utimeq
 import ucollections
@@ -60,7 +61,9 @@ class EventLoop:
     def call_at_(self, time, callback, args=()):
         if __debug__ and DEBUG:
             log.debug("Scheduling in waitq: %s", (time, callback, args))
-        self.waitq.push(time, callback, args)
+        id = self.waitq.push(time, callback, args)
+        if isinstance(callback, type_gen):
+            prev = callback.pend_throw(id)
 
     def wait(self, delay):
         # Default wait implementation, to be overriden in subclasses
@@ -80,6 +83,10 @@ class EventLoop:
                 if delay > 0:
                     break
                 self.waitq.pop(cur_task)
+
+                if isinstance(cur_task[1], type_gen):
+                    prev = cur_task[1].pend_throw(None)
+
                 if __debug__ and DEBUG:
                     log.debug("Moving from waitq to runq: %s", cur_task[1])
                 self.call_soon(cur_task[1], *cur_task[2])
@@ -261,6 +268,12 @@ def cancel(coro):
     prev = coro.pend_throw(CancelledError())
     if prev is False:
         _event_loop.call_soon(coro)
+    elif isinstance(prev, int):
+        # utimeq id
+        _event_loop.waitq.remove(prev)
+        _event_loop.call_soon(coro)
+    else:
+        assert prev is None
 
 
 class TimeoutObj:
@@ -285,6 +298,11 @@ def wait_for_ms(coro, timeout):
             #print("prev pend", prev)
             if prev is False:
                 _event_loop.call_soon(timeout_obj.coro)
+            elif isinstance(prev, int):
+                _event_loop.waitq.remove(prev)
+                _event_loop.call_soon(timeout_obj.coro)
+            else:
+                assert prev is None
 
     timeout_obj = TimeoutObj(_event_loop.cur_task)
     _event_loop.call_later_ms(timeout, timeout_func, timeout_obj)

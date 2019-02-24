@@ -4,6 +4,7 @@ import errno as errno_
 import stat as stat_
 import ffilib
 import uos
+from . import path
 
 R_OK = const(4)
 W_OK = const(2)
@@ -72,26 +73,41 @@ def raise_error():
 
 stat = uos.stat
 
-def getcwd():
-    buf = bytearray(512)
-    return getcwd_(buf, 512)
+if hasattr(uos, "getcwd"):
+    getcwd = uos.getcwd
+else:
+    def getcwd():
+        buf = bytearray(512)
+        return getcwd_(buf, 512)
 
-def mkdir(name, mode=0o777):
-    e = mkdir_(name, mode)
-    check_error(e)
+if hasattr(uos, "mkdir"):
+    mkdir = uos.mkdir
+else:
+    def mkdir(name, mode=0o777):
+        e = mkdir_(name, mode)
+        check_error(e)
 
-def rename(old, new):
-    e = rename_(old, new)
-    check_error(e)
+if hasattr(uos, "rename"):
+    rename = uos.rename
+else:
+    def rename(old, new):
+        e = rename_(old, new)
+        check_error(e)
 
-def unlink(name):
-    e = unlink_(name)
-    check_error(e)
-remove = unlink
+if hasattr(uos, "remove"):
+    unlink = remove = uos.remove
+else:
+    def unlink(name):
+        e = unlink_(name)
+        check_error(e)
+    remove = unlink
 
-def rmdir(name):
-    e = rmdir_(name)
-    check_error(e)
+if hasattr(uos, "rmdir"):
+    rmdir = uos.rmdir
+else:
+    def rmdir(name):
+        e = rmdir_(name)
+        check_error(e)
 
 def makedirs(name, mode=0o777, exist_ok=False):
     s = ""
@@ -191,9 +207,12 @@ def dup(fd):
 def access(path, mode):
     return access_(path, mode) == 0
 
-def chdir(dir):
-    r = chdir_(dir)
-    check_error(r)
+if hasattr(uos, "chdir"):
+    chdir = uos.chdir
+else:
+    def chdir(dir):
+        r = chdir_(dir)
+        check_error(r)
 
 def fork():
     r = fork_()

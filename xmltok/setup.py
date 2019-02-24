@@ -7,14 +7,14 @@ sys.path.append("..")
 import sdist_upip
 
 setup(name='micropython-xmltok',
-      version='0.2',
+      version='0.2.2',
       description='xmltok module for MicroPython',
-      long_description='Simple XML tokenizer',
-      url='https://github.com/micropython/micropython-lib',
+      long_description='Simple XML tokenizer. See also micropython-xmltok2.',
+      url='https://github.com/pfalcon/micropython-lib',
       author='Paul Sokolovsky',
-      author_email='micro-python@googlegroups.com',
-      maintainer='micropython-lib Developers',
-      maintainer_email='micro-python@googlegroups.com',
+      author_email='micropython-lib@googlegroups.com',
+      maintainer='Paul Sokolovsky',
+      maintainer_email='micropython-lib@googlegroups.com',
       license='MIT',
       cmdclass={'sdist': sdist_upip.sdist},
       py_modules=['xmltok'])

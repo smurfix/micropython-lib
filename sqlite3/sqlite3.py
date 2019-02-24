@@ -1,6 +1,10 @@
+# (c) 2014-2018 Paul Sokolovsky. MIT license.
 import sys
 import ffilib
+import uerrno
 
+
+PTR_SZ = 8 if ffilib.bitness > 32 else 4
 
 sq3 = ffilib.open("libsqlite3")
 
@@ -61,7 +65,7 @@ def check_error(db, s):
         raise Error(s, sqlite3_errmsg(db))
 
 
-class Connections:
+class Connection:
 
     def __init__(self, h):
         self.h = h
@@ -85,7 +89,7 @@ class Cursor:
             params = [quote(v) for v in params]
             sql = sql % tuple(params)
         print(sql)
-        b = bytearray(4)
+        b = bytearray(PTR_SZ)
         s = sqlite3_prepare(self.h, sql, -1, b, None)
         check_error(self.h, s)
         self.stmnt = int.from_bytes(b, sys.byteorder)
@@ -129,10 +133,14 @@ class Cursor:
 
 
 def connect(fname):
-    b = bytearray(4)
-    sqlite3_open(fname, b)
+    b = bytearray(PTR_SZ)
+    res = sqlite3_open(fname, b)
     h = int.from_bytes(b, sys.byteorder)
-    return Connections(h)
+    if not h:
+        raise OSError(uerrno.ENOMEM)
+    check_error(h, res)
+    print(h)
+    return Connection(h)
 
 
 def quote(val):

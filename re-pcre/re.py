@@ -33,6 +33,10 @@ UNICODE = U = 0
 PCRE_INFO_CAPTURECOUNT = 2
 
 
+class error(Exception):
+    pass
+
+
 class PCREMatch:
 
     def __init__(self, s, num_matches, offsets):
@@ -143,10 +147,12 @@ class PCREPattern:
 
 
 def compile(pattern, flags=0):
-    errptr = bytes(4)
-    erroffset = bytes(4)
+    # Assume that long can hold a pointer
+    errptr = array.array("l", [0])
+    erroffset = array.array("i", [0])
     regex = pcre_compile(pattern, flags, errptr, erroffset, None)
-    assert regex
+    if not regex:
+        raise error("couldn't compile pattern: %s" % pattern)
     return PCREPattern(regex)
 
 

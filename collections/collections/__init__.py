@@ -12,6 +12,9 @@ try:
 except ImportError:
     pass
 
+class Mapping:
+    pass
+
 class MutableMapping:
     pass
 class Sequence:

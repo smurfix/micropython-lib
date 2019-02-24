@@ -19,13 +19,34 @@ setup(name='micropython-%(dist_name)s',
       version='%(version)s',
       description=%(desc)r,
       long_description=%(long_desc)s,
-      url='https://github.com/micropython/micropython-lib',
+      url='https://github.com/pfalcon/micropython-lib',
       author=%(author)r,
       author_email=%(author_email)r,
       maintainer=%(maintainer)r,
-      maintainer_email='micro-python@googlegroups.com',
+      maintainer_email=%(maintainer_email)r,
       license=%(license)r,
       cmdclass={'sdist': sdist_upip.sdist},
+      %(_what_)s=[%(modules)s]%(_inst_req_)s)
+"""
+
+TEMPLATE_CPYTHON = """\
+import sys
+# Remove current dir from sys.path, otherwise setuptools will peek up our
+# module instead of system's.
+sys.path.pop(0)
+from setuptools import setup
+sys.path.append("..")
+
+setup(name='micropython-%(dist_name)s',
+      version='%(version)s',
+      description=%(desc)r,
+      long_description=%(long_desc)s,
+      url='https://github.com/pfalcon/micropython-lib',
+      author=%(author)r,
+      author_email=%(author_email)r,
+      maintainer=%(maintainer)r,
+      maintainer_email=%(maintainer_email)r,
+      license=%(license)r,
       %(_what_)s=[%(modules)s]%(_inst_req_)s)
 """
 
@@ -68,8 +89,8 @@ This is MicroPython compatibility module, allowing applications using
 MicroPython-specific features to run on CPython.
 """
 
-MICROPYTHON_DEVELS = 'micropython-lib Developers'
-MICROPYTHON_DEVELS_EMAIL = 'micro-python@googlegroups.com'
+MICROPYTHON_DEVELS = 'Paul Sokolovsky'
+MICROPYTHON_DEVELS_EMAIL = 'micropython-lib@googlegroups.com'
 CPYTHON_DEVELS = 'CPython Developers'
 CPYTHON_DEVELS_EMAIL = 'python-dev@python.org'
 PYPY_DEVELS = 'PyPy Developers'
@@ -86,9 +107,9 @@ def parse_metadata(f):
     return data
 
 
-def write_setup(fname, substs):
+def write_setup(fname, template, substs):
     with open(fname, "w") as f:
-        f.write(TEMPLATE % substs)
+        f.write(template % substs)
 
 
 def main():
@@ -99,12 +120,16 @@ def main():
 
         dirname = fname.split("/")[0]
         module = dirname
+        template = TEMPLATE
+
         if data["type"] == "module":
             data["_what_"] = "py_modules"
         elif data["type"] == "package":
             data["_what_"] = "packages"
         else:
             raise ValueError
+
+        data["maintainer_email"] = MICROPYTHON_DEVELS_EMAIL
 
         if data["srctype"] == "dummy":
             data["author"] = MICROPYTHON_DEVELS
@@ -142,6 +167,7 @@ def main():
                 data["license"] = "MIT"
         elif data["srctype"] == "cpython-backport":
             assert module.startswith("cpython-")
+            template = TEMPLATE_CPYTHON
             module = module[len("cpython-"):]
             data["author"] = MICROPYTHON_DEVELS
             data["author_email"] = MICROPYTHON_DEVELS_EMAIL
@@ -163,15 +189,20 @@ def main():
 
         data["modules"] = "'" + data["name"].rsplit(".", 1)[0] + "'"
         if "extra_modules" in data:
-            data["modules"] += ", " + ", ".join(["'" + x.strip() + "'" for x in data["extra_modules"].split(",")])
+            extra_modules = ["'" + x.strip() + "'" for x in data["extra_modules"].split(",")]
+            if any(" " in d for d in extra_modules):
+                raise ValueError("extra_modules should be comma separated")
+            data["modules"] += ", " + ", ".join(extra_modules)
 
         if "depends" in data:
             deps = ["micropython-" + x.strip() for x in data["depends"].split(",")]
+            if any(" " in d for d in deps):
+                raise ValueError("depends should be comma separated")
             data["_inst_req_"] = ",\n      install_requires=['" + "', '".join(deps) + "']"
         else:
             data["_inst_req_"] = ""
 
-        write_setup(dirname + "/setup.py", data)
+        write_setup(dirname + "/setup.py", template, data)
 
 
 if __name__ == "__main__":

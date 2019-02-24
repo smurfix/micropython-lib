@@ -10,6 +10,8 @@ module has its own licensing terms):
 * ported from CPython
 * ported from some other Python implementation, e.g. PyPy
 * some modules actually aren't implemented yet and are dummy
+* some modules are extensions and are not part of CPython's
+  standard library
 
 Note that the main target of micropython-lib is a "Unix" port of the
 aforementioned fork of MicroPython. Actual system requirements vary per
@@ -29,8 +31,9 @@ names are prefixed with "micropython-" (the reverse is not true - some
 package starting with "micropython-" aren't part of micropython-lib and
 were released by 3rd parties).
 
-Browse available packages [via this
-URL](https://pypi.org/search/?q=&o=&c=Programming+Language+%3A%3A+Python+%3A%3A+Implementation+%3A%3A+MicroPython).
+Browse available packages
+[via this URL](https://pypi.org/search/?q=micropython). (Note: this may
+also include 3rd-party modules which are not part of micropython-lib.)
 
 To install packages from PyPI for usage on your local system, use the
 `upip` tool, which is MicroPython's native package manager, similar to
@@ -52,11 +55,48 @@ This machine benchmarks at 93633 pystones/second
 Run `micropython -m upip --help` for more information about `upip`.
 
 
+CPython backports
+-----------------
+While micropython-lib focuses on MicroPython, sometimes it may be beneficial
+to run MicroPython code using CPython, e.g. to use code coverage, debugging,
+etc. tools available for it. To facilitate such usage, micropython-lib also
+provides reimplementations ("backports") of MicroPython modules which run on
+CPython. This first of all applies to the builtin MicroPython "u" modules,
+but as time goes on, backports of micropython-lib's own modules can be
+provided. Backport modules are in the directories named `cpython-*` of
+this repository. On PyPI, these named
+[micropython-cpython-*](https://pypi.org/search/?q=micropython-cpython-).
+
+These modules should be installed with CPython's pip3 tool. Example session:
+
+~~~
+$ pip3 install --user micropython-cpython-uhashlib
+...
+$ python3
+...
+>>> import uhashlib
+>>> uhashlib.sha1(b"test").hexdigest()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+AttributeError: 'sha1' object has no attribute 'hexdigest'
+# MicroPython's uhashlib doesn't have hexdigest(), use ubinascii.hexlify(.digest())
+>>> uhashlib.sha1(b"test").digest()
+b'\xa9J\x8f\xe5\xcc\xb1\x9b\xa6\x1cL\x08s\xd3\x91\xe9\x87\x98/\xbb\xd3'
+~~~
+
+
 Development
 -----------
 To install modules during development, use `make install`. By default, all
 available packages will be installed. To install a specific module, add the
 `MOD=<module>` parameter to the end of the `make install` command.
+
+
+Contributing
+------------
+micropython-lib is a community project and can be implemented "fully" only
+by contributions from interested parties. The contributions are expected
+to adhere to [Contribution Guidelines](CONTRIBUTING.md).
 
 
 Links
@@ -71,3 +111,31 @@ information):
 Guidelines for packaging MicroPython modules for PyPI:
 
  * https://github.com/micropython/micropython/issues/413
+
+Credits
+-------
+micropython-lib is developed and maintained by Paul Sokolovsky
+([@pfalcon](https://github.com/pfalcon/)) with the help of MicroPython
+community.
+
+List of modules specific to micropython-lib
+-------------------------------------------
+
+While micropython-lib's primary way is to provide implementation
+of Python standard library, micropython-lib goes further and hosts
+some extension modules which are deemed to be worth being a part
+of "MicroPython standard library". This section lists them to easy
+discovery:
+
+* uaiohttpclient - HTTP client for uasyncio
+* uargparse - small subset of argparse module
+* uasyncio - asynchronous scheduling and I/O, roughly based on CPython's
+  asyncio
+* uasycio.core - just a scheduler part of uasyncio
+* ucurses - small subset of curses module
+* udnspkt - DNS packet handling (Sans I/O approach)
+* ulogging - small subset of logging module
+* upip - MicroPython package manager, modelled after "pip" tool
+* upysh - minimalistic filesystem shell using Python syntax
+* utarfile - small subset of tarfile module
+* xmltok2 - small/simple XML tokenizer

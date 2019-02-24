@@ -1,3 +1,4 @@
+# (c) 2014-2018 Paul Sokolovsky. MIT license.
 import uerrno
 import uselect as select
 import usocket as _socket
@@ -35,8 +36,8 @@ class PollEventLoop(EventLoop):
     def remove_reader(self, sock):
         if DEBUG and __debug__:
             log.debug("remove_reader(%s)", sock)
+        self.objmap.pop(id(sock), None)
         self.poller.unregister(sock)
-        del self.objmap[id(sock)]
 
     def add_writer(self, sock, cb, *args):
         if DEBUG and __debug__:
@@ -51,16 +52,12 @@ class PollEventLoop(EventLoop):
     def remove_writer(self, sock):
         if DEBUG and __debug__:
             log.debug("remove_writer(%s)", sock)
-        try:
-            self.poller.unregister(sock)
-            self.objmap.pop(id(sock), None)
-        except OSError as e:
-            # StreamWriter.awrite() first tries to write to a socket,
-            # and if that succeeds, yield IOWrite may never be called
-            # for that socket, and it will never be added to poller. So,
-            # ignore such error.
-            if e.args[0] != uerrno.ENOENT:
-                raise
+        self.objmap.pop(id(sock), None)
+        # StreamWriter.awrite() first tries to write to a socket,
+        # and if that succeeds, yield IOWrite may never be called
+        # for that socket, and it will never be added to poller. So,
+        # ignore such error.
+        self.poller.unregister(sock, False)
 
     def wait(self, delay):
         if DEBUG and __debug__:
@@ -77,7 +74,7 @@ class PollEventLoop(EventLoop):
                     # These events are returned even if not requested, and
                     # are sticky, i.e. will be returned again and again.
                     # If the caller doesn't do proper error handling and
-                    # unregister this sock, we'll busy-loop on it, so we
+                    # unregistering this sock, we'll busy-loop on it, so we
                     # as well can unregister it now "just in case".
                     self.remove_reader(sock)
                 if DEBUG and __debug__:
@@ -143,6 +140,7 @@ class StreamReader:
 
     def aclose(self):
         yield IOReadDone(self.polls)
+        # .ios wraps .polls, so closing ios will lead to closure of polls too
         self.ios.close()
 
     def __repr__(self):
