@@ -29,3 +29,19 @@ def shuffle(seq):
     for i in range(l):
         j = randrange(l)
         seq[i], seq[j] = seq[j], seq[i]
+
+class Random:
+    @staticmethod
+    def randrange(start, stop=None):
+        return randrange(start, stop)
+
+    @staticmethod
+    def randint(start, stop):
+        return randint(start, stop)
+
+    uniform = randint
+
+    @staticmethod
+    def shuffle(seq):
+        return shuffle(seq)
+
