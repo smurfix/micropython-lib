@@ -7,9 +7,9 @@ sys.path.append("..")
 import sdist_upip
 
 setup(name='micropython-reprlib',
-      version='0.0.1',
-      description='Dummy reprlib module for MicroPython',
-      long_description='This is a dummy implementation of a module for MicroPython standard library.\nIt contains zero or very little functionality, and primarily intended to\navoid import errors (using idea that even if an application imports a\nmodule, it may be not using it onevery code path, so may work at least\npartially). It is expected that more complete implementation of the module\nwill be provided later. Please help with the development if you are\ninterested in this module.',
+      version='0.1.0',
+      description='reprlib module for MicroPython',
+      long_description="This is a module ported to MicroPython standard library,\nwith efficient and lean design in mind. Note that this module is likely work\nin progress and likely supports just a subset of CPython's corresponding\nmodule. Please help with the development if you are interested in this\nmodule.",
       url='https://github.com/micropython/micropython-lib',
       author='micropython-lib Developers',
       author_email='micro-python@googlegroups.com',
