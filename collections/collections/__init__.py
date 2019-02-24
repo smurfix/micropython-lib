@@ -14,3 +14,11 @@ except ImportError:
 
 class MutableMapping:
     pass
+class Sequence:
+    pass
+class MutableSequence:
+    pass
+class Set:
+    pass
+class MutableSet:
+    pass
