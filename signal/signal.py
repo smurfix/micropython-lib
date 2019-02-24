@@ -8,6 +8,8 @@ SIGINT = 2
 SIGPIPE = 13
 SIGTERM = 15
 
+default_int_handler = SIG_IGN
+
 libc = ffilib.libc()
 
 signal_i = libc.func("i", "signal", "ii")
