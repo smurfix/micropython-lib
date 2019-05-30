@@ -1,4 +1,4 @@
-# (c) 2014-2018 Paul Sokolovsky. MIT license.
+# (c) 2014-2019 Paul Sokolovsky. MIT license.
 import uerrno
 import uselect as select
 import usocket as _socket
@@ -21,43 +21,48 @@ class PollEventLoop(EventLoop):
     def __init__(self, runq_len=16, waitq_len=16):
         EventLoop.__init__(self, runq_len, waitq_len)
         self.poller = select.poll()
-        self.objmap = {}
 
     def add_reader(self, sock, cb, *args):
         if DEBUG and __debug__:
             log.debug("add_reader%s", (sock, cb, args))
         if args:
-            self.poller.register(sock, select.POLLIN)
-            self.objmap[id(sock)] = (cb, args)
+            self.poller.register(sock, select.POLLIN, (cb, args))
         else:
-            self.poller.register(sock, select.POLLIN)
-            self.objmap[id(sock)] = cb
+            self.poller.register(sock, select.POLLIN, cb)
 
     def remove_reader(self, sock):
         if DEBUG and __debug__:
             log.debug("remove_reader(%s)", sock)
-        self.objmap.pop(id(sock), None)
         self.poller.unregister(sock)
 
     def add_writer(self, sock, cb, *args):
         if DEBUG and __debug__:
             log.debug("add_writer%s", (sock, cb, args))
         if args:
-            self.poller.register(sock, select.POLLOUT)
-            self.objmap[id(sock)] = (cb, args)
+            self.poller.register(sock, select.POLLOUT, (cb, args))
         else:
-            self.poller.register(sock, select.POLLOUT)
-            self.objmap[id(sock)] = cb
+            self.poller.register(sock, select.POLLOUT, cb)
 
     def remove_writer(self, sock):
         if DEBUG and __debug__:
             log.debug("remove_writer(%s)", sock)
-        self.objmap.pop(id(sock), None)
         # StreamWriter.awrite() first tries to write to a socket,
         # and if that succeeds, yield IOWrite may never be called
         # for that socket, and it will never be added to poller. So,
         # ignore such error.
         self.poller.unregister(sock, False)
+
+    def cancel_io(self, sock):
+        if DEBUG and __debug__:
+            log.debug("cancel_io(%s)", sock)
+        # Cancel both reader and writer
+        # Don't remove, in the hope that it will be used again, though
+        # this call is usually used for timeouts, and timeouts are
+        # usually handled as fatal errors (but then underlying stream
+        # should be closed by user).
+        # Use modify() deliberately, to catch a case when we cancel
+        # a socket which was never pended, what shouldn't happen.
+        self.poller.modify(sock, 0)
 
     def wait(self, delay):
         if DEBUG and __debug__:
@@ -65,25 +70,21 @@ class PollEventLoop(EventLoop):
         # We need one-shot behavior (second arg of 1 to .poll())
         res = self.poller.ipoll(delay, 1)
         #log.debug("poll result: %s", res)
-        # Remove "if res" workaround after
-        # https://github.com/micropython/micropython/issues/2716 fixed.
-        if res:
-            for sock, ev in res:
-                cb = self.objmap[id(sock)]
-                if ev & (select.POLLHUP | select.POLLERR):
-                    # These events are returned even if not requested, and
-                    # are sticky, i.e. will be returned again and again.
-                    # If the caller doesn't do proper error handling and
-                    # unregistering this sock, we'll busy-loop on it, so we
-                    # as well can unregister it now "just in case".
-                    self.remove_reader(sock)
-                if DEBUG and __debug__:
-                    log.debug("Calling IO callback: %r", cb)
-                if isinstance(cb, tuple):
-                    cb[0](*cb[1])
-                else:
-                    cb.pend_throw(None)
-                    self.call_soon(cb)
+        for sock, ev, cb in res:
+            if ev & (select.POLLHUP | select.POLLERR):
+                # These events are returned even if not requested, and
+                # are sticky, i.e. will be returned again and again.
+                # If the caller doesn't do proper error handling and
+                # unregistering this sock, we'll busy-loop on it, so we
+                # as well can unregister it now "just in case".
+                self.remove_reader(sock)
+            if DEBUG and __debug__:
+                log.debug("Calling IO callback: %r", cb)
+            if isinstance(cb, tuple):
+                cb[0](*cb[1])
+            else:
+                cb.pend_throw(None)
+                self.call_soon(cb)
 
 
 class StreamReader:
@@ -112,7 +113,9 @@ class StreamReader:
         while n:
             yield IORead(self.polls)
             res = self.ios.read(n)
-            assert res is not None
+            if res is None:
+                # See comment in read()
+                continue
             if not res:
                 yield IOReadDone(self.polls)
                 break
@@ -127,7 +130,9 @@ class StreamReader:
         while True:
             yield IORead(self.polls)
             res = self.ios.readline()
-            assert res is not None
+            if res is None:
+                # See comment in read()
+                continue
             if not res:
                 yield IOReadDone(self.polls)
                 break

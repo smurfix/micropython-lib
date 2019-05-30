@@ -2,8 +2,8 @@
 #
 # The MIT License (MIT)
 #
-# Copyright (c) 2018 Paul Sokolovsky
-# Copyright (c) 2016-2018 Damien P. George
+# Copyright (c) 2019 Paul Sokolovsky
+# Copyright (c) 2016-2019 Damien P. George
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -27,15 +27,23 @@ import uio
 
 from opcode import upyopcodes
 from opcode import opmap
-
+from .qstrs import static_qstr_list
 
 # Current supported .mpy version
-MPY_VERSION = 3
+MPY_VERSION = 4
 
 # .mpy feature flags
 MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE = 1
 MICROPY_PY_BUILTINS_STR_UNICODE = 2
 
+# Values correspond to mp_raw_code_kind_t enum
+# (they don't have to, but follow mpy-tool.py for now).
+MP_CODE_UNUSED = 0
+MP_CODE_RESERVED = 1
+MP_CODE_BYTECODE = 2
+MP_CODE_NATIVE_PY = 3
+MP_CODE_NATIVE_VIPER = 4
+MP_CODE_NATIVE_ASM = 5
 
 _DEBUG = 0
 
@@ -78,10 +86,29 @@ class Bytecode:
         return self.buf.getvalue()
 
 
+class QStrWindow:
+    def __init__(self, size):
+        self.window = []
+        self.size = size
+
+    def push(self, val):
+        dprint("push:", val)
+        self.window = [val] + self.window[:self.size - 1]
+
+    def access(self, idx):
+        dprint("access:", idx)
+        val = self.window[idx]
+        self.window = [val] + self.window[:idx] + self.window[idx + 1:]
+        return val
+
+
 class MPYInput:
 
     def __init__(self, f):
         self.f = f
+        # Count of bytes read so far (can be reset freely). Mostly used to
+        # track the size of variable-length components, while reading them.
+        self.cnt = 0
 
     def read_header(self):
         header = self.f.read(4)
@@ -89,18 +116,27 @@ class MPYInput:
         if header[0] != ord('M'):
             raise Exception('not a valid .mpy file')
         if header[1] != MPY_VERSION:
-            raise Exception('incompatible .mpy version')
+            raise Exception('incompatible .mpy version (expected: %d, found: %d)' % (MPY_VERSION, header[1]))
 
         self.feature_flags = header[2]
         self.small_int_bits = header[3]
+        self.qstr_winsz = self.read_uint()
+        self.qstr_win = QStrWindow(self.qstr_winsz)
 
     def has_flag(self, flag):
         return self.feature_flags & flag
 
-    def read_uint(self):
+    def read_byte(self, buf=None):
+        self.cnt += 1
+        b = self.f.read(1)[0]
+        if buf is not None:
+            buf.append(b)
+        return b
+
+    def read_uint(self, buf=None):
         i = 0
         while True:
-            b = self.f.read(1)[0]
+            b = self.read_byte(buf)
             i = (i << 7) | (b & 0x7f)
             if b & 0x80 == 0:
                 break
@@ -108,7 +144,19 @@ class MPYInput:
 
     def read_qstr(self):
         ln = self.read_uint()
-        return self.f.read(ln).decode()
+        if ln == 0:
+            # static qstr
+            static_qstr = self.read_byte()
+            dprint("static qstr:", static_qstr)
+            return static_qstr_list[static_qstr - 1]
+        if ln & 1:
+            # qstr in table
+            return self.qstr_win.access(ln >> 1)
+        ln >>= 1
+        qs = self.f.read(ln).decode()
+        self.cnt += ln
+        self.qstr_win.push(qs)
+        return qs
 
     def read_obj(self):
         obj_type = self.f.read(1)
@@ -129,31 +177,54 @@ class MPYInput:
             else:
                 assert 0
 
+    def read_bytecode(self, bc_len):
+        qstr_cnt = 0
+        qstrs = []
+
+        self.cnt = 0
+        bc_buf = bytearray()
+        while len(bc_buf) < bc_len:
+            opcode = self.read_byte(bc_buf)
+            typ, extra = upyopcodes.mp_opcode_type(opcode)
+            dprint("%02d-%02d: opcode: %02x type: %d, extra: %d" % (self.cnt, len(bc_buf), opcode, typ, extra))
+            if typ == upyopcodes.MP_OPCODE_QSTR:
+                qstrs.append(self.read_qstr())
+                # Patch in CodeType-local qstr id, kinda similar to CPython
+                bc_buf.append(qstr_cnt & 0xff)
+                bc_buf.append(qstr_cnt >> 8)
+                qstr_cnt += 1
+            elif typ == upyopcodes.MP_OPCODE_VAR_UINT:
+                self.read_uint(bc_buf)
+            elif typ == upyopcodes.MP_OPCODE_OFFSET:
+                self.read_byte(bc_buf)
+                self.read_byte(bc_buf)
+            elif typ == upyopcodes.MP_OPCODE_BYTE:
+                pass
+            else:
+                assert 0
+
+            for _ in range(extra):
+                self.read_byte(bc_buf)
+
+        return bc_buf, tuple(qstrs)
+
     def read_raw_code(self):
         co = CodeType()
 
-        bc_len = self.read_uint()
-        bytecode = self.f.read(bc_len)
-        dprint("bc:", bytecode)
+        kind_len = self.read_uint()
+        kind = (kind_len & 3) + MP_CODE_BYTECODE
+        bc_len = kind_len >> 2
+        dprint("bc_len:", bc_len)
+
+        assert kind == MP_CODE_BYTECODE
+
+        self.cnt = 0
+        name_idx, prelude = self.read_prelude(co)
+        prelude_len = self.cnt
+        co.co_code, co.co_names = self.read_bytecode(bc_len - prelude_len)
 
         co.co_name = self.read_qstr()
         co.co_filename = self.read_qstr()
-
-        ip, ip2, prelude = self.extract_prelude(bytecode, co)
-        dprint("prelude:", prelude)
-        dprint(bytecode[:ip2], len(bytecode[ip2:ip]), bytecode[ip2:ip], bytecode[ip:])
-
-        co.co_cellvars = []
-        cell_info = ip2 + prelude[-1] - 1
-        while bytecode[cell_info] != 0xff:
-            co.co_cellvars.append(bytecode[cell_info])
-            cell_info += 1
-        co.co_cellvars = tuple(co.co_cellvars)
-
-        bytecode = bytearray(bytecode)
-        co.co_names = tuple(self.read_bytecode_qstrs(bytecode, ip))
-
-        co.co_code = bytes(bytecode[ip:])
 
         n_obj = self.read_uint()
         n_raw_code = self.read_uint()
@@ -211,6 +282,40 @@ class MPYInput:
         co.co_flags = scope_flags
         co.mpy_def_pos_args = n_def_pos_args
         return ip, ip2, (n_state, n_exc_stack, scope_flags, n_pos_args, n_kwonly_args, n_def_pos_args, code_info_size)
+
+    def read_prelude(self, co):
+        n_state = self.read_uint()
+        n_exc_stack = self.read_uint()
+        scope_flags = self.read_byte()
+        n_pos_args = self.read_byte()
+        n_kwonly_args = self.read_byte()
+        n_def_pos_args = self.read_byte()
+        code_info_size_sz = self.cnt
+        code_info_size = self.read_uint()
+        code_info_size_sz = self.cnt - code_info_size_sz
+        dprint("size of code_info_size:", code_info_size_sz)
+
+        for _ in range(code_info_size - code_info_size_sz):
+            self.read_byte()
+
+        cells = []
+        while True:
+            idx = self.read_byte()
+            if idx == 255:
+                break
+            cells.append(idx)
+
+        co.mpy_stacksize = n_state
+        co.mpy_excstacksize = n_exc_stack
+        co.co_stacksize = n_state - (n_pos_args + n_kwonly_args)
+        co.co_argcount = n_pos_args
+        co.co_kwonlyargcount = n_kwonly_args
+        co.co_flags = scope_flags
+        co.mpy_scope_flags = scope_flags
+        co.mpy_def_pos_args = n_def_pos_args
+        co.mpy_cellvars = tuple(cells)
+
+        return -1, (n_state, n_exc_stack, scope_flags, n_pos_args, n_kwonly_args, n_def_pos_args, code_info_size)
 
 
 class MPYOutput:
