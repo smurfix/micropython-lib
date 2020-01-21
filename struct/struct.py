@@ -1,4 +1,50 @@
-from ustruct import *
+import sys
+import ustruct
+
+
+error = ValueError
+
+
+def _norm_fmt(fmt):
+    f = ""
+    if fmt.startswith("="):
+        f = "<"
+        if sys.byteorder == "big":
+            f = ">"
+    elif fmt.startswith("!"):
+        f = ">"
+    if f:
+        fmt = f + fmt[1:]
+
+    fmt = fmt.replace("?", "B")
+    # TODO: should check for count
+    fmt = fmt.replace("c", "1s")
+    # Assume that size_t matches long
+    fmt = fmt.replace('n', 'l')
+    fmt = fmt.replace('N', 'L')
+
+    return fmt
+
+
+def calcsize(fmt):
+    return ustruct.calcsize(_norm_fmt(fmt))
+
+
+def pack(fmt, *vals):
+    return ustruct.pack(_norm_fmt(fmt), *vals)
+
+
+def pack_into(fmt, buf, offset, *vals):
+    return ustruct.pack_into(_norm_fmt(fmt), buf, offset, *vals)
+
+
+def unpack(fmt, buf):
+    return ustruct.unpack(_norm_fmt(fmt), buf)
+
+
+def unpack_from(fmt, buf, offset=0):
+    return ustruct.unpack_from(_norm_fmt(fmt), buf, offset)
+
 
 class Struct:
 

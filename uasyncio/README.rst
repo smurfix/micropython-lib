@@ -3,8 +3,8 @@ uasyncio
 
 uasyncio is a minimalist asynchronous scheduling library, roughly
 modeled after CPython's asyncio. uasyncio is intended to be used with
-`Pycopy <https://github.com/pfalcon/micropython>`_, an advanced fork
-of MicroPython.
+`Pycopy <https://github.com/pfalcon/pycopy>`_, a lightweight and
+minimalist Python implementation.
 
 uasyncio doesn't use naive always-iterating scheduling algorithm,
 but performs a real time-based scheduling, which allows it (and
@@ -19,7 +19,7 @@ Major conceptual differences to asyncio:
   coroutines (and callbacks).
 * Methods provided are more consistently coroutines.
 * uasyncio uses wrap-around millisecond timebase (as native to all
-  MicroPython ports.)
+  Pycopy ports.)
 * Instead of single large package, number of subpackages are provided
   (each installable separately).
 
@@ -44,26 +44,20 @@ Specific differences:
   instead. Also, both StreamReader and StreamWriter have .aclose()
   coroutine method.
 
-Requirements
-------------
-
-At the time of writing, uasyncio requires `Pycopy <https://github.com/pfalcon/micropython>`_
-project to run.
-
 Advanced topics
 ---------------
 
 Terminology:
 
 * Task - a top-level coroutine, scheduled in an event loop using its
-  create_task() method. (Or, as a uasyncio extension, a couroutine
+  ``create_task()`` method. (Or, as a uasyncio extension, a couroutine
   object passed to the "yield" statement by another coroutine, this
-  is equivalent to the create_task() call). Different tasks run
+  is equivalent to the ``create_task()`` call). Different tasks run
   concurrently in a cooperative manner. Each task can also call
   another coroutine recursively (in which case calling coroutine
   will "await" (literally) completion of the called coroutine). More
   formally, a task is a coroutine call tree routed in the top-level
-  coroutine passed to create_tast(), and identified by it.
+  coroutine passed to ``create_task()``, and identified by it.
 
 Notes on resource sharing between the tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -73,8 +67,8 @@ between uasyncio cooperative tasks has its peculiarities and limitations.
 Actually, due to I/O scheduling implementation, there're additional
 peculiarities to consider. But let's start with stating that resource
 sharing between tasks/threads is usually an error. For example, if both
-tasks write to the resource, their would be interspersed, possibly in
-an unpredictable way. Reading is even more problematic: different tasks
+tasks write to the resource, their output would be interspersed, possibly
+in an unpredictable way. Reading is even more problematic: different tasks
 may get partial input, or one can get all and other none at all. If tasks
 implement some protocol, i.e. I/O dialog, that would lead to incorrect
 behavior and/or deadlock. Thus, the rule is: don't share the same I/O

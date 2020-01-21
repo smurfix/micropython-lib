@@ -10,17 +10,23 @@ for f in _PASSTHRU:
 
 
 def sleep_ms(t):
-    time.sleep(t / 1000)
+    _time.sleep(t / 1000)
 
 def sleep_us(t):
-    time.sleep(t / 1000000)
+    _time.sleep(t / 1000000)
 
 def ticks_ms():
-    return int(time.time() * 1000) & (MICROPY_PY_UTIME_TICKS_PERIOD - 1)
+    return int(_time.time() * 1000) & (MICROPY_PY_UTIME_TICKS_PERIOD - 1)
 
 def ticks_us():
-    return int(time.time() * 1000000) & (MICROPY_PY_UTIME_TICKS_PERIOD - 1)
+    return int(_time.time() * 1000000) & (MICROPY_PY_UTIME_TICKS_PERIOD - 1)
 
 ticks_cpu = ticks_us
 
-del f, _time
+def ticks_add(t, delta):
+    return (t + delta) & (MICROPY_PY_UTIME_TICKS_PERIOD - 1)
+
+def ticks_diff(a, b):
+    return ((a - b + MICROPY_PY_UTIME_TICKS_PERIOD // 2) & (MICROPY_PY_UTIME_TICKS_PERIOD - 1)) - MICROPY_PY_UTIME_TICKS_PERIOD // 2
+
+del f

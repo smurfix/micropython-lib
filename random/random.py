@@ -11,6 +11,8 @@ def randrange(start, stop=None):
     while upper > pwr2:
         pwr2 <<= 1
         bits += 1
+    if bits == 0:
+        return start
     while True:
         r = getrandbits(bits)
         if r < upper:
@@ -45,3 +47,7 @@ class Random:
     def shuffle(seq):
         return shuffle(seq)
 
+def choice(seq):
+    if not seq:
+        raise IndexError
+    return seq[randrange(len(seq))]

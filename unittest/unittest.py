@@ -20,6 +20,7 @@ class AssertRaisesContext:
         return self
 
     def __exit__(self, exc_type, exc_value, tb):
+        self.exception = exc_value
         if exc_type is None:
             assert False, "%r not raised" % self.expected
         if issubclass(exc_type, self.expected):
@@ -41,6 +42,16 @@ class TestCase:
         if not msg:
             msg = "%r not expected to be equal %r" % (x, y)
         assert x != y, msg
+
+    def assertLessEqual(self, x, y, msg=None):
+        if msg is None:
+            msg = "%r is expected to be <= %r" % (x, y)
+        assert x <= y, msg
+
+    def assertGreaterEqual(self, x, y, msg=None):
+        if msg is None:
+            msg = "%r is expected to be >= %r" % (x, y)
+        assert x >= y, msg
 
     def assertAlmostEqual(self, x, y, places=None, msg='', delta=None):
         if x == y:
@@ -175,14 +186,14 @@ def skipUnless(cond, msg):
 
 class TestSuite:
     def __init__(self):
-        self.tests = []
+        self._tests = []
     def addTest(self, cls):
-        self.tests.append(cls)
+        self._tests.append(cls)
 
 class TestRunner:
     def run(self, suite):
         res = TestResult()
-        for c in suite.tests:
+        for c in suite._tests:
             res.exceptions.extend(run_class(c, res))
 
         print("Ran %d tests\n" % res.testsRun)
@@ -225,8 +236,10 @@ def run_class(c, test_result):
     exceptions = []
     for name in dir(o):
         if name.startswith("test"):
-            print("%s (%s) ..." % (name, c.__qualname__), end="")
             m = getattr(o, name)
+            if not callable(m):
+                continue
+            print("%s (%s) ..." % (name, c.__qualname__), end="")
             set_up()
             try:
                 test_result.testsRun += 1
@@ -239,6 +252,8 @@ def run_class(c, test_result):
                 exceptions.append(capture_exc(ex))
                 print(" FAIL")
                 test_result.failuresNum += 1
+                # Uncomment to investigate failure in detail
+                #raise
                 continue
             finally:
                 tear_down()

@@ -29,6 +29,17 @@ args = parser.parse_args(["--b-opt", "456"])
 assert args.a_opt is False and args.b_opt == "456" and args.c_opt == "test"
 args = parser.parse_args(["--c-opt", "override"])
 assert args.a_opt is False and args.b_opt == 123 and args.c_opt == "override"
+args = parser.parse_args(["--c-opt=override"])
+assert args.a_opt is False and args.b_opt == 123 and args.c_opt == "override"
+args = parser.parse_args(["--c-opt=override", "--b-opt", "456"])
+assert args.a_opt is False and args.b_opt == "456" and args.c_opt == "override"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--int-opt", type=int)
+args = parser.parse_args(["--int-opt", "123"])
+assert args.int_opt == 123
+args = parser.parse_args(["--int-opt=123"])
+assert args.int_opt == 123
 
 parser = argparse.ArgumentParser()
 parser.add_argument("files", nargs="+")
@@ -44,6 +55,11 @@ args = parser.parse_args(["a", "b"])
 assert args.files1 == ["a", "b"] and args.files2 == []
 args = parser.parse_args(["a", "b", "c"])
 assert args.files1 == ["a", "b"] and args.files2 == ["c"]
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-a", action="append")
+args = parser.parse_args(["-a", "1", "-a", "2"])
+assert args.a == ["1", "2"]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("a", nargs=2)

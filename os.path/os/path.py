@@ -55,11 +55,27 @@ def exists(path):
 # TODO
 lexists = exists
 
+def isfile(path):
+    import stat
+    try:
+        mode = os.stat(path)[0]
+        return stat.S_ISREG(mode)
+    except OSError:
+        return False
+
 def isdir(path):
     import stat
     try:
         mode = os.stat(path)[0]
         return stat.S_ISDIR(mode)
+    except OSError:
+        return False
+
+def islink(path):
+    import stat
+    try:
+        mode = os.lstat(path)[0]
+        return stat.S_ISLNK(mode)
     except OSError:
         return False
 

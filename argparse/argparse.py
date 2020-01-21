@@ -3,7 +3,10 @@ Minimal and functional version of CPython's argparse module.
 """
 
 import sys
-from ucollections import namedtuple
+
+
+class Namespace:
+    pass
 
 
 class _ArgError(BaseException):
@@ -11,28 +14,35 @@ class _ArgError(BaseException):
 
 
 class _Arg:
-    def __init__(self, names, dest, action, nargs, const, default, help):
+    def __init__(self, names, dest, action, nargs, const, default, type, help):
         self.names = names
         self.dest = dest
         self.action = action
         self.nargs = nargs
         self.const = const
         self.default = default
+        self.type = type
         self.help = help
 
-    def parse(self, optname, args):
+    def parse(self, optname, eq_arg, args):
         # parse args for this arg
-        if self.action == "store":
+        if self.action == "store" or self.action == "append":
             if self.nargs is None:
-                if args:
-                    return args.pop(0)
+                if eq_arg is not None:
+                    ret = eq_arg
+                elif args:
+                    ret = args.pop(0)
                 else:
                     raise _ArgError("expecting value for %s" % optname)
+                return self.type(ret)
             elif self.nargs == "?":
-                if args:
-                    return args.pop(0)
+                if eq_arg is not None:
+                    ret = eq_arg
+                elif args:
+                    ret = args.pop(0)
                 else:
                     return self.default
+                return self.type(ret)
             else:
                 if self.nargs == "*":
                     n = -1
@@ -89,6 +99,9 @@ class ArgumentParser:
             action = "store_const"
             const = False
             default = kwargs.get("default", True)
+        elif action == "append":
+            const = None
+            default = kwargs.get("default", [])
         else:
             const = kwargs.get("const", None)
             default = kwargs.get("default", None)
@@ -106,7 +119,7 @@ class ArgumentParser:
                 args = [dest]
         list.append(
             _Arg(args, dest, action, kwargs.get("nargs", None),
-                 const, default, kwargs.get("help", "")))
+                 const, default, kwargs.get("type", str), kwargs.get("help", "")))
 
     def usage(self, full):
         # print short usage
@@ -163,12 +176,10 @@ class ArgumentParser:
             sys.exit(2)
 
     def _parse_args(self, args, return_unknown):
+        argholder = Namespace()
         # add optional args with defaults
-        arg_dest = []
-        arg_vals = []
         for opt in self.opt:
-            arg_dest.append(opt.dest)
-            arg_vals.append(opt.default)
+            setattr(argholder, opt.dest, opt.default)
 
         # deal with unknown arguments, if needed
         unknown = []
@@ -185,10 +196,19 @@ class ArgumentParser:
                 if a in ("-h", "--help"):
                     self.usage(True)
                     sys.exit(0)
+
+                eq_arg = None
+                if a.startswith("--") and "=" in a:
+                    a, eq_arg = a.split("=", 1)
+
                 found = False
                 for i, opt in enumerate(self.opt):
                     if a in opt.names:
-                        arg_vals[i] = opt.parse(a, args)
+                        val = opt.parse(a, eq_arg, args)
+                        if opt.action == "append":
+                            getattr(argholder, opt.dest).append(val)
+                        else:
+                            setattr(argholder, opt.dest, val)
                         found = True
                         break
                 if not found:
@@ -206,12 +226,9 @@ class ArgumentParser:
                     else:
                         raise _ArgError("extra args: %s" % " ".join(args))
                 for pos in self.pos:
-                    arg_dest.append(pos.dest)
-                    arg_vals.append(pos.parse(pos.names[0], args))
+                    setattr(argholder, pos.dest, pos.parse(pos.names[0], None, args))
                 parsed_pos = True
                 if return_unknown:
                     consume_unknown()
 
-        # build and return named tuple with arg values
-        values = namedtuple("args", arg_dest)(*arg_vals)
-        return (values, unknown) if return_unknown else values
+        return (argholder, unknown) if return_unknown else argholder

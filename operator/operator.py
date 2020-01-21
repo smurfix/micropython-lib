@@ -1,3 +1,13 @@
+def itemgetter(*args):
+    def _itemgetter(obj):
+        return obj[args[0]]
+    def _itemsgetter(obj):
+        return tuple([obj[i] for i in args])
+    if len(args) == 1:
+        return _itemgetter
+    return _itemsgetter
+
+
 def attrgetter(attr):
     assert "." not in attr
     def _attrgetter(obj):
@@ -22,6 +32,12 @@ class itemgetter:
 
 def getitem(a, b):
     return a[b]
+
+def methodcaller(name, *args, **kwargs):
+    def _methodcaller(obj):
+        return getattr(obj, name)(*args, **kwargs)
+    return _methodcaller
+
 
 def lt(a, b):
     return a < b
@@ -148,4 +164,5 @@ def irshift(a, b):
     a >>= b
     return a
 
-
+def getitem(a, b):
+    return a[b]

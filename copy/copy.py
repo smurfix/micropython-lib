@@ -1,3 +1,6 @@
+# Originally from CPython (https://github.com/python/cpython/)
+# Changes for pycopy-lib project (https://github.com/pfalcon/pycopy-lib)
+# by Paul Sokolovsky.
 """Generic (shallow and deep) copying operations.
 
 Interface summary:
@@ -80,8 +83,6 @@ def copy(x):
     if copier:
         return copier(x)
 
-    raise Error("un(shallow)copyable object of type %s" % cls)
-
     dispatch_table = {}
     reductor = dispatch_table.get(cls)
     if reductor:
@@ -95,7 +96,7 @@ def copy(x):
             if reductor:
                 rv = reductor()
             else:
-                raise Error("un(shallow)copyable object of type %s" % cls)
+                return _copy_instance(x)
 
     return _reconstruct(x, rv, 0)
 
@@ -126,6 +127,23 @@ def _copy_with_copy_method(x):
     return x.copy()
 if PyStringMap is not None:
     d[PyStringMap] = _copy_with_copy_method
+
+def _copy_instance(x, memo=None):
+    tp = type(x)
+    o = object.__new__(tp)
+    for f in dir(x):
+        if f == "__class__":
+            continue
+        if hasattr(tp, f):
+            if callable(getattr(tp, f)):
+                continue
+            if getattr(tp, f) is getattr(x, f):
+                continue
+        v = getattr(x, f)
+        if memo is not None:
+            v = deepcopy(v, memo)
+        setattr(o, f, v)
+    return o
 
 del d
 
@@ -160,6 +178,7 @@ def deepcopy(x, memo=None, _nil=[]):
             if copier:
                 y = copier(memo)
             else:
+                dispatch_table = {}
                 reductor = dispatch_table.get(cls)
                 if reductor:
                     rv = reductor(x)
@@ -172,8 +191,7 @@ def deepcopy(x, memo=None, _nil=[]):
                         if reductor:
                             rv = reductor()
                         else:
-                            raise Error(
-                                "un(deep)copyable object of type %s" % cls)
+                            return _copy_instance(x, memo)
                 y = _reconstruct(x, rv, 1, memo)
 
     # If is its own copy, don't memoize.
@@ -243,6 +261,14 @@ def _deepcopy_dict(x, memo):
 d[dict] = _deepcopy_dict
 if PyStringMap is not None:
     d[PyStringMap] = _deepcopy_dict
+
+def _deepcopy_set(x, memo):
+    y = set()
+    memo[id(x)] = y
+    for value in x:
+        y.add(deepcopy(value, memo))
+    return y
+d[set] = _deepcopy_set
 
 def _deepcopy_method(x, memo): # Copy instance methods
     return type(x)(x.__func__, deepcopy(x.__self__, memo))

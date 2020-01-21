@@ -12,6 +12,7 @@ def getmembers(obj, pred=None):
 
 def isfunction(obj):
     return isinstance(obj, type(isfunction))
+isroutine = isfunction
 
 def isgeneratorfunction(obj):
     return isinstance(obj, type(lambda:(yield)))
@@ -32,9 +33,18 @@ def isclass(obj):
 def ismodule(obj):
     return isinstance(obj, type(sys))
 
+def iscode(obj):
+    return False
+
+def isframe(obj):
+    return False
+
+def istraceback(obj):
+    return False
+
 
 def getargspec(func):
-    raise NotImplementedError("This is over-dynamic function, not supported by MicroPython")
+    raise NotImplementedError("This is over-dynamic function, not supported by Pycopy")
 
 def getmodule(obj, _filename=None):
     return None  # Not known
@@ -57,3 +67,7 @@ def currentframe():
 
 def getframeinfo(frame, context=1):
     return ("<unknown>", -1, "<unknown>", [""], 0)
+
+
+def unwrap(func, *, stop=None):
+    return func

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# MicroPython will pick up glob from the current dir otherwise.
+# Pycopy will pick up glob from the current dir otherwise.
 import sys
 sys.path.pop(0)
 
@@ -15,11 +15,11 @@ from setuptools import setup
 sys.path.append("..")
 import sdist_upip
 
-setup(name='micropython-%(dist_name)s',
+setup(name='pycopy-%(dist_name)s',
       version='%(version)s',
       description=%(desc)r,
       long_description=%(long_desc)s,
-      url='https://github.com/pfalcon/micropython-lib',
+      url='https://github.com/pfalcon/pycopy-lib',
       author=%(author)r,
       author_email=%(author_email)r,
       maintainer=%(maintainer)r,
@@ -37,11 +37,11 @@ sys.path.pop(0)
 from setuptools import setup
 sys.path.append("..")
 
-setup(name='micropython-%(dist_name)s',
+setup(name='pycopy-%(dist_name)s',
       version='%(version)s',
       description=%(desc)r,
       long_description=%(long_desc)s,
-      url='https://github.com/pfalcon/micropython-lib',
+      url='https://github.com/pfalcon/pycopy-lib',
       author=%(author)r,
       author_email=%(author_email)r,
       maintainer=%(maintainer)r,
@@ -51,7 +51,8 @@ setup(name='micropython-%(dist_name)s',
 """
 
 DUMMY_DESC = """\
-This is a dummy implementation of a module for MicroPython standard library.
+This is a dummy implementation of a module for the standard library of
+Pycopy project (https://github.com/pfalcon/pycopy).
 It contains zero or very little functionality, and primarily intended to
 avoid import errors (using idea that even if an application imports a
 module, it may be not using it onevery code path, so may work at least
@@ -61,36 +62,39 @@ interested in this module."""
 
 CPYTHON_DESC = """\
 This is a module ported from CPython standard library to be compatible with
-MicroPython interpreter. Usually, this means applying small patches for
-features not supported (yet, or at all) in MicroPython. Sometimes, heavier
-changes are required. Note that CPython modules are written with availability
-of vast resources in mind, and may not work for MicroPython ports with
-limited heap. If you are affected by such a case, please help reimplement
+Pycopy project (https://github.com/pfalcon/pycopy). Usually, this means
+applying small patches for features not supported (yet, or at all) in Pycopy.
+Sometimes, heavier changes are required. Note that CPython modules are written
+with availability of vast resources in mind, and may not work for Pycopy ports
+with limited heap. If you are affected by such a case, please help reimplement
 the module from scratch."""
 
 PYPY_DESC = """\
-This is a module ported from PyPy standard library to be compatible with
-MicroPython interpreter. Usually, this means applying small patches for
-features not supported (yet, or at all) in MicroPython. Sometimes, heavier
-changes are required. Note that CPython modules are written with availability
-of vast resources in mind, and may not work for MicroPython ports with
-limited heap. If you are affected by such a case, please help reimplement
+This is a module ported from CPython standard library to be compatible with
+Pycopy project (https://github.com/pfalcon/pycopy). Usually, this means
+applying small patches for features not supported (yet, or at all) in Pycopy.
+Sometimes, heavier changes are required. Note that PyPy modules are written
+with availability of vast resources in mind, and may not work for Pycopy ports
+with limited heap. If you are affected by such a case, please help reimplement
 the module from scratch."""
 
-MICROPYTHON_LIB_DESC = """\
-This is a module reimplemented specifically for MicroPython standard library,
-with efficient and lean design in mind. Note that this module is likely work
-in progress and likely supports just a subset of CPython's corresponding
-module. Please help with the development if you are interested in this
-module."""
-
-BACKPORT_DESC = """\
-This is MicroPython compatibility module, allowing applications using
-MicroPython-specific features to run on CPython.
+PYCOPY_LIB_DESC = """\
+This is a module for the standard library of Pycopy project:
+https://github.com/pfalcon/pycopy . This module was implemented from
+scratch specifically to target Pycopy, with efficient and lean design
+in mind. Note that this module is likely work in progress and likely
+supports just a subset of CPython’s corresponding module. Please help
+with the development if you are interested in this module.
 """
 
-MICROPYTHON_DEVELS = 'Paul Sokolovsky'
-MICROPYTHON_DEVELS_EMAIL = 'micropython-lib@googlegroups.com'
+BACKPORT_DESC = """\
+This is a compatibility module for the standard library of Pycopy project
+(https://github.com/pfalcon/pycopy). It allows applications using
+Pycopy APIs to run on CPython.
+"""
+
+PYCOPY_DEVELS = 'Paul Sokolovsky'
+PYCOPY_DEVELS_EMAIL = 'pycopy-dev@googlegroups.com'
 CPYTHON_DEVELS = 'CPython Developers'
 CPYTHON_DEVELS_EMAIL = 'python-dev@python.org'
 PYPY_DEVELS = 'PyPy Developers'
@@ -99,6 +103,8 @@ PYPY_DEVELS_EMAIL = 'pypy-dev@python.org'
 def parse_metadata(f):
     data = {}
     for l in f:
+        while l.endswith("\\\n"):
+            l = l[:-2] + f.readline()
         l = l.strip()
         if l[0] == "#":
             continue
@@ -129,51 +135,51 @@ def main():
         else:
             raise ValueError
 
-        data["maintainer_email"] = MICROPYTHON_DEVELS_EMAIL
+        data["maintainer_email"] = PYCOPY_DEVELS_EMAIL
 
         if data["srctype"] == "dummy":
-            data["author"] = MICROPYTHON_DEVELS
-            data["author_email"] = MICROPYTHON_DEVELS_EMAIL
-            data["maintainer"] = MICROPYTHON_DEVELS
+            data["author"] = PYCOPY_DEVELS
+            data["author_email"] = PYCOPY_DEVELS_EMAIL
+            data["maintainer"] = PYCOPY_DEVELS
             data["license"] = "MIT"
-            data["desc"] = "Dummy %s module for MicroPython" % module
+            data["desc"] = "Dummy %s module for Pycopy" % module
             data["long_desc"] = DUMMY_DESC
         elif data["srctype"] == "cpython":
             data["author"] = CPYTHON_DEVELS
             data["author_email"] = CPYTHON_DEVELS_EMAIL
-            data["maintainer"] = MICROPYTHON_DEVELS
+            data["maintainer"] = PYCOPY_DEVELS
             data["license"] = "Python"
-            data["desc"] = "CPython %s module ported to MicroPython" % module
+            data["desc"] = "CPython %s module ported to Pycopy" % module
             data["long_desc"] = CPYTHON_DESC
         elif data["srctype"] == "pypy":
             data["author"] = PYPY_DEVELS
             data["author_email"] = PYPY_DEVELS_EMAIL
-            data["maintainer"] = MICROPYTHON_DEVELS
+            data["maintainer"] = PYCOPY_DEVELS
             data["license"] = "MIT"
-            data["desc"] = "PyPy %s module ported to MicroPython" % module
+            data["desc"] = "PyPy %s module ported to Pycopy" % module
             data["long_desc"] = PYPY_DESC
-        elif data["srctype"] == "micropython-lib":
+        elif data["srctype"] == "pycopy-lib":
             if "author" not in data:
-                data["author"] = MICROPYTHON_DEVELS
+                data["author"] = PYCOPY_DEVELS
             if "author_email" not in data:
-                data["author_email"] = MICROPYTHON_DEVELS_EMAIL
+                data["author_email"] = PYCOPY_DEVELS_EMAIL
             if "maintainer" not in data:
-                data["maintainer"] = MICROPYTHON_DEVELS
+                data["maintainer"] = PYCOPY_DEVELS
             if "desc" not in data:
-                data["desc"] = "%s module for MicroPython" % module
+                data["desc"] = "%s module for Pycopy" % module
             if "long_desc" not in data:
-                data["long_desc"] = MICROPYTHON_LIB_DESC
+                data["long_desc"] = PYCOPY_LIB_DESC
             if "license" not in data:
                 data["license"] = "MIT"
         elif data["srctype"] == "cpython-backport":
             assert module.startswith("cpython-")
             template = TEMPLATE_CPYTHON
             module = module[len("cpython-"):]
-            data["author"] = MICROPYTHON_DEVELS
-            data["author_email"] = MICROPYTHON_DEVELS_EMAIL
-            data["maintainer"] = MICROPYTHON_DEVELS
-            data["license"] = "Python"
-            data["desc"] = "MicroPython module %s ported to CPython" % module
+            data["author"] = PYCOPY_DEVELS
+            data["author_email"] = PYCOPY_DEVELS_EMAIL
+            data["maintainer"] = PYCOPY_DEVELS
+            data["license"] = "MIT"
+            data["desc"] = "Pycopy module %s ported to CPython" % module
             data["long_desc"] = BACKPORT_DESC
         else:
             raise ValueError
@@ -195,7 +201,11 @@ def main():
             data["modules"] += ", " + ", ".join(extra_modules)
 
         if "depends" in data:
-            deps = ["micropython-" + x.strip() for x in data["depends"].split(",")]
+            prefix = "pycopy-"
+            # Current convention is to use explicit "cpython-" prefix on dependency
+            #if data["srctype"] == "cpython-backport":
+            #    prefix = "pycopy-cpython-"
+            deps = [prefix + x.strip() for x in data["depends"].split(",")]
             if any(" " in d for d in deps):
                 raise ValueError("depends should be comma separated")
             data["_inst_req_"] = ",\n      install_requires=['" + "', '".join(deps) + "']"

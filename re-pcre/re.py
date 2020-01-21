@@ -1,6 +1,34 @@
+# This file is part of the standard library of Pycopy project, minimalist
+# and lightweight Python implementation.
+#
+# https://github.com/pfalcon/pycopy
+# https://github.com/pfalcon/pycopy-lib
+#
+# The MIT License (MIT)
+#
+# Copyright (c) 2014-2019 Paul Sokolovsky
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
 import sys
 import ffilib
-import array
+import uarray as array
 
 
 pcre = ffilib.open("libpcre")
@@ -18,6 +46,9 @@ pcre_exec = pcre.func("i", "pcre_exec", "PPsiiipi")
 #       int pcre_fullinfo(const pcre *code, const pcre_extra *extra,
 #            int what, void *where);
 pcre_fullinfo = pcre.func("i", "pcre_fullinfo", "PPip")
+
+# int pcre_get_stringnumber(const pcre *code, const char *name);
+pcre_get_stringnumber = pcre.func("i", "pcre_get_stringnumber", "PP")
 
 
 IGNORECASE = I = 1
@@ -39,13 +70,20 @@ class error(Exception):
 
 class PCREMatch:
 
-    def __init__(self, s, is_str, num_matches, offsets):
+    def __init__(self, patobj, s, is_str, num_matches, offsets):
+        self.patobj = patobj
         self.s = s
         self.is_str = is_str
         self.num = num_matches
         self.offsets = offsets
 
-    def sub(self, i):
+    def substr(self, i):
+        if isinstance(i, str):
+            n = i
+            i = pcre_get_stringnumber(self.patobj, n)
+            if i < 0:
+                raise IndexError("no such group: %s" % n)
+        i <<= 1
         s = self.s[self.offsets[i]:self.offsets[i + 1]]
         if self.is_str:
             s = s.decode()
@@ -53,10 +91,10 @@ class PCREMatch:
 
     def group(self, *n):
         if not n:
-            return self.sub(0)
+            return self.substr(0)
         if len(n) == 1:
-            return self.sub(n[0] * 2)
-        return tuple(self.sub(i * 2) for i in n)
+            return self.substr(n[0])
+        return tuple(self.substr(i) for i in n)
 
     def groups(self, default=None):
         assert default is None
@@ -93,14 +131,21 @@ class PCREPattern:
             return None
         # We don't care how many matching subexpressions we got, we
         # care only about total # of capturing ones (including empty)
-        return PCREMatch(s, is_str, cap_count + 1, ov)
+        return PCREMatch(self.obj, s, is_str, cap_count + 1, ov)
 
     def match(self, s, pos=0, endpos=-1):
         return self.search(s, pos, endpos, PCRE_ANCHORED)
 
+    def _handle_repl_escapes(self, repl, match):
+        def handle_backrefs(bk_match):
+            gr = bk_match.group(1)
+            if gr.startswith("g"):
+                gr = gr[2:-1]
+            gr = int(gr)
+            return match.group(gr)
+        return sub(r"\\(\d+|g<\d+>)", handle_backrefs, repl)
+
     def sub(self, repl, s, count=0):
-        if not callable(repl):
-            assert "\\" not in repl, "Backrefs not implemented"
         res = ""
         while s:
             m = self.search(s)
@@ -110,6 +155,8 @@ class PCREPattern:
             res += s[:beg]
             if callable(repl):
                 res += repl(m)
+            elif "\\" in repl:
+                res += self._handle_repl_escapes(repl, m)
             else:
                 res += repl
             s = s[end:]
@@ -155,6 +202,24 @@ class PCREPattern:
                 res.append(m.groups())
             beg, end = m.span(0)
             start = end
+            if beg == end:
+                # Have progress on empty matches
+                start += 1
+
+    def finditer(self, s, pos=0, endpos=-1):
+        if endpos != -1:
+            s = s[:endpos]
+        res = []
+        while True:
+            m = self.search(s, pos)
+            if not m:
+                break
+            yield m
+            beg, end = m.span(0)
+            pos = end
+            if beg == end:
+                # Have progress on empty matches
+                pos += 1
 
 
 def compile(pattern, flags=0):
@@ -194,6 +259,10 @@ def split(pattern, s, maxsplit=0, flags=0):
 def findall(pattern, s, flags=0):
     r = compile(pattern, flags)
     return r.findall(s)
+
+def finditer(pattern, s, flags=0):
+    r = compile(pattern, flags)
+    return r.finditer(s)
 
 
 def escape(s):

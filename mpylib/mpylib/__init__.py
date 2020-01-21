@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+# This file is part of the standard library of Pycopy project, minimalist
+# and resource-efficient Python implementation.
+#
+# https://github.com/pfalcon/pycopy
+# https://github.com/pfalcon/pycopy-lib
 #
 # The MIT License (MIT)
 #
@@ -23,14 +27,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import sys
 import uio
+import ulogging
 
 from opcode import upyopcodes
-from opcode import opmap
+from ucodetype import CodeType
 from .qstrs import static_qstr_list
 
 # Current supported .mpy version
-MPY_VERSION = 4
+MPY_VERSION = 5
 
 # .mpy feature flags
 MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE = 1
@@ -45,45 +51,10 @@ MP_CODE_NATIVE_PY = 3
 MP_CODE_NATIVE_VIPER = 4
 MP_CODE_NATIVE_ASM = 5
 
-_DEBUG = 0
-
-def dprint(*args):
-    if _DEBUG:
-        print(*args)
+DEFAULT_QSTR_WINSZ = 32
 
 
-class CodeType:
-
-    def __repr__(self):
-        return '<code object %s, file "%s", line ??>' % (self.co_name, self.co_filename)
-
-
-class Bytecode:
-
-    def init_bc(self):
-        self.buf = uio.BytesIO()
-        self.co_names = []
-        self.co_consts = []
-
-    def add(self, opcode, *args):
-        self.buf.write(bytes([opcode]))
-        if args != ():
-            arg = args[0]
-        if opcode == opmap["LOAD_NAME"]:
-            self.buf.write(bytes([0, 0]))
-            # cache
-            self.buf.write(bytes([0]))
-            self.co_names.append(arg)
-        elif opcode == opmap["CALL_FUNCTION"]:
-            MPYOutput.write_uint(None, args[0] + (args[1] << 8), self.buf)
-        elif opcode == opmap["LOAD_CONST_SMALL_INT"]:
-            MPYOutput.write_int(None, arg, self.buf)
-        elif opcode == opmap["LOAD_CONST_OBJ"]:
-            MPYOutput.write_uint(None, len(self.co_consts), self.buf)
-            self.co_consts.append(arg)
-
-    def get_bc(self):
-        return self.buf.getvalue()
+log = ulogging.getLogger(__name__)
 
 
 class QStrWindow:
@@ -92,11 +63,11 @@ class QStrWindow:
         self.size = size
 
     def push(self, val):
-        dprint("push:", val)
+        log.debug("QStrWindow.push: %s", val)
         self.window = [val] + self.window[:self.size - 1]
 
     def access(self, idx):
-        dprint("access:", idx)
+        log.debug("QStrWindow.access: %d", idx)
         val = self.window[idx]
         self.window = [val] + self.window[:idx] + self.window[idx + 1:]
         return val
@@ -109,9 +80,10 @@ class MPYInput:
         # Count of bytes read so far (can be reset freely). Mostly used to
         # track the size of variable-length components, while reading them.
         self.cnt = 0
+        self.off = 0
 
     def read_header(self):
-        header = self.f.read(4)
+        header = self.read(4)
 
         if header[0] != ord('M'):
             raise Exception('not a valid .mpy file')
@@ -122,12 +94,20 @@ class MPYInput:
         self.small_int_bits = header[3]
         self.qstr_winsz = self.read_uint()
         self.qstr_win = QStrWindow(self.qstr_winsz)
+        log.info("read_header: feature_flags: 0x%x, smallint_bits: %d, qstr_winsz: %d",
+            self.feature_flags, self.small_int_bits, self.qstr_winsz)
 
     def has_flag(self, flag):
         return self.feature_flags & flag
 
+    def read(self, sz):
+        self.cnt += sz
+        self.off += sz
+        return self.f.read(sz)
+
     def read_byte(self, buf=None):
         self.cnt += 1
+        self.off += 1
         b = self.f.read(1)[0]
         if buf is not None:
             buf.append(b)
@@ -147,23 +127,22 @@ class MPYInput:
         if ln == 0:
             # static qstr
             static_qstr = self.read_byte()
-            dprint("static qstr:", static_qstr)
+            log.debug("static qstr: %d", static_qstr)
             return static_qstr_list[static_qstr - 1]
         if ln & 1:
             # qstr in table
             return self.qstr_win.access(ln >> 1)
         ln >>= 1
-        qs = self.f.read(ln).decode()
-        self.cnt += ln
+        qs = self.read(ln).decode()
         self.qstr_win.push(qs)
         return qs
 
     def read_obj(self):
-        obj_type = self.f.read(1)
+        obj_type = self.read(1)
         if obj_type == b'e':
             return Ellipsis
         else:
-            buf = self.f.read(self.read_uint())
+            buf = self.read(self.read_uint())
             if obj_type == b's':
                 return str(buf, 'utf8')
             elif obj_type == b'b':
@@ -186,7 +165,7 @@ class MPYInput:
         while len(bc_buf) < bc_len:
             opcode = self.read_byte(bc_buf)
             typ, extra = upyopcodes.mp_opcode_type(opcode)
-            dprint("%02d-%02d: opcode: %02x type: %d, extra: %d" % (self.cnt, len(bc_buf), opcode, typ, extra))
+            log.debug("%02d-%02d: opcode: %02x type: %d, extra: %d" % (self.cnt, len(bc_buf), opcode, typ, extra))
             if typ == upyopcodes.MP_OPCODE_QSTR:
                 qstrs.append(self.read_qstr())
                 # Patch in CodeType-local qstr id, kinda similar to CPython
@@ -214,26 +193,28 @@ class MPYInput:
         kind_len = self.read_uint()
         kind = (kind_len & 3) + MP_CODE_BYTECODE
         bc_len = kind_len >> 2
-        dprint("bc_len:", bc_len)
+        log.info("code obj: kind: %d, len: %d", kind, bc_len)
 
         assert kind == MP_CODE_BYTECODE
 
         self.cnt = 0
         name_idx, prelude = self.read_prelude(co)
         prelude_len = self.cnt
+        log.debug("len of prelude: %d", prelude_len)
         co.co_code, co.co_names = self.read_bytecode(bc_len - prelude_len)
+        log.debug("co_code: %s, co_names=%s", co.co_code, co.co_names)
 
         co.co_name = self.read_qstr()
         co.co_filename = self.read_qstr()
 
         n_obj = self.read_uint()
         n_raw_code = self.read_uint()
-        dprint("n_obj=%d n_raw_code=%d" % (n_obj, n_raw_code))
-        dprint("arg qstrs: %d " % (prelude[3] + prelude[4]))
+        log.info("n_obj=%d n_raw_code=%d", n_obj, n_raw_code)
+        log.info("arg qstrs: %d", prelude[3] + prelude[4])
 
         co.mpy_argnames = tuple([self.read_qstr() for _ in range(prelude[3] + prelude[4])])
         co.mpy_consts = tuple([self.read_obj() for _ in range(n_obj)])
-        dprint("---")
+        log.info("Recursively reading %d code object(s)", n_raw_code)
         co.mpy_codeobjs = tuple([self.read_raw_code() for _ in range(n_raw_code)])
         co.co_consts = co.mpy_argnames + co.mpy_consts + co.mpy_codeobjs
         co.co_varnames = co.mpy_argnames
@@ -244,7 +225,7 @@ class MPYInput:
     def read_bytecode_qstrs(self, bytecode, ip):
         cnt = 0
         qstrs = []
-        dprint("before:", bytecode)
+        log.debug("before: %s", bytecode)
         while ip < len(bytecode):
             typ, sz = upyopcodes.mp_opcode_format(bytecode, ip)
             if typ == 1:
@@ -254,19 +235,19 @@ class MPYInput:
                 bytecode[ip + 2] = cnt >> 8
                 cnt += 1
             ip += sz
-        dprint("after:", bytecode)
+        log.debug("after: %s", bytecode)
         return qstrs
 
     @classmethod
     def extract_prelude(cls, bytecode, co):
         ip = 0
-        ip, n_state = upyopcodes.decode_uint(bytecode, ip)
-        ip, n_exc_stack = upyopcodes.decode_uint(bytecode, ip)
+        ip, n_state = upyopcodes.decode_varint(bytecode, ip)
+        ip, n_exc_stack = upyopcodes.decode_varint(bytecode, ip)
         scope_flags = bytecode[ip]; ip += 1
         n_pos_args = bytecode[ip]; ip += 1
         n_kwonly_args = bytecode[ip]; ip += 1
         n_def_pos_args = bytecode[ip]; ip += 1
-        ip2, code_info_size = upyopcodes.decode_uint(bytecode, ip)
+        ip2, code_info_size = upyopcodes.decode_varint(bytecode, ip)
         ip += code_info_size
         while bytecode[ip] != 0xff:
             ip += 1
@@ -276,6 +257,12 @@ class MPYInput:
 
         co.mpy_stacksize = n_state
         co.mpy_excstacksize = n_exc_stack
+        # Despite CPython docs saying "co_stacksize is the required stack
+        # size (including local variables)", it's actually doesn't include
+        # local variables (which function arguments being such too). This
+        # was reported as https://bugs.python.org/issue38316 .
+        # We don't readily have a number of local vars here, so at least
+        # subtract number of arguments.
         co.co_stacksize = n_state - (n_pos_args + n_kwonly_args)
         co.co_argcount = n_pos_args
         co.co_kwonlyargcount = n_kwonly_args
@@ -293,7 +280,9 @@ class MPYInput:
         code_info_size_sz = self.cnt
         code_info_size = self.read_uint()
         code_info_size_sz = self.cnt - code_info_size_sz
-        dprint("size of code_info_size:", code_info_size_sz)
+        log.debug("n_state=%d, n_exc_stack=%d, scope_flags=0x%x, n_pos=%d, n_kwonly=%d n_def_pos=%d code_info_size=%d",
+            n_state, n_exc_stack, scope_flags, n_pos_args, n_kwonly_args, n_def_pos_args, code_info_size)
+        log.debug("size of varlen-encoded code_info_size field: %d", code_info_size_sz)
 
         for _ in range(code_info_size - code_info_size_sz):
             self.read_byte()
@@ -305,13 +294,20 @@ class MPYInput:
                 break
             cells.append(idx)
 
+        log.debug("cells: %s", cells)
+
         co.mpy_stacksize = n_state
         co.mpy_excstacksize = n_exc_stack
+        # Despite CPython docs saying "co_stacksize is the required stack
+        # size (including local variables)", it's actually doesn't include
+        # local variables (which function arguments being such too). This
+        # was reported as https://bugs.python.org/issue38316 .
+        # We don't readily have a number of local vars here, so at least
+        # subtract number of arguments.
         co.co_stacksize = n_state - (n_pos_args + n_kwonly_args)
         co.co_argcount = n_pos_args
         co.co_kwonlyargcount = n_kwonly_args
         co.co_flags = scope_flags
-        co.mpy_scope_flags = scope_flags
         co.mpy_def_pos_args = n_def_pos_args
         co.mpy_cellvars = tuple(cells)
 
@@ -323,9 +319,10 @@ class MPYOutput:
     def __init__(self, f):
         self.f = f
 
-    def write_header(self, mpy_ver, feature_flags, smallint_bits):
+    def write_header(self, mpy_ver, feature_flags, smallint_bits, qstr_winsz=DEFAULT_QSTR_WINSZ):
         self.f.write(b"M")
         self.f.write(bytes([mpy_ver, feature_flags, smallint_bits]))
+        self.write_uint(qstr_winsz)
 
     def write_uint(self, val, f=None):
         if f is None:
@@ -368,10 +365,12 @@ class MPYOutput:
 
         f.write(arr[i:])
 
-    def write_qstr(self, s):
+    def write_qstr(self, s, buf=None):
+        if buf is None:
+            buf = self.f
         s = s.encode()
-        self.write_uint(len(s))
-        self.f.write(s)
+        self.write_uint(len(s) << 1, buf)
+        buf.write(s)
 
     def write_obj(self, o):
         if o is ...:
@@ -384,7 +383,7 @@ class MPYOutput:
         else:
             assert 0
 
-    def pack_code(self, code):
+    def pack_prelude(self, code):
         buf = uio.BytesIO()
         self.write_uint(code.mpy_stacksize, buf)
         self.write_uint(code.mpy_excstacksize, buf)
@@ -395,30 +394,73 @@ class MPYOutput:
         self.write_uint(1 + 4 + len(code.co_lnotab), buf)
 
         # co_name qstr, will be filled in on load
-        buf.write(bytes([0, 0]))
+        buf.writebin("<H", 0)
         # co_filename qstr, will be filled in on load
-        buf.write(bytes([0, 0]))
+        buf.writebin("<H", 0)
 
         buf.write(code.co_lnotab)
 
-        buf.write(bytes(code.co_cellvars))
-        buf.write(bytes([0xff]))
-
-        buf.write(code.co_code)
+        buf.write(bytes(code.mpy_cellvars))
+        buf.writebin("B", 0xff)
 
         return buf
 
+    def pack_code(self, code):
+        buf = self.pack_prelude(code)
+        buf.write(code.co_code)
+        return buf
+
+    def pack_bytecode(self, code, buf):
+        bc = code.co_code
+        log.debug("pack_bytecode: in: bc: %s, buf: %s", bc, buf.getvalue())
+        i = 0
+        qstr_i = 0
+        while i < len(bc):
+            opcode = bc[i]
+            buf.writebin("B", opcode)
+            i += 1
+            typ, extra = upyopcodes.mp_opcode_type(opcode)
+            log.debug("%02d: opcode: %02x type: %d, extra: %d" % (i, opcode, typ, extra))
+            if typ == upyopcodes.MP_OPCODE_QSTR:
+                self.write_qstr(code.co_names[qstr_i], buf)
+                qstr_i += 1
+                i += 2
+            elif typ == upyopcodes.MP_OPCODE_VAR_UINT:
+                while True:
+                    b = bc[i]
+                    buf.writebin("B", b)
+                    i += 1
+                    if b & 0x80 == 0:
+                        break
+            elif typ == upyopcodes.MP_OPCODE_OFFSET:
+                buf.writebin("B", bc[i])
+                buf.writebin("B", bc[i + 1])
+                i += 2
+            elif typ == upyopcodes.MP_OPCODE_BYTE:
+                pass
+            else:
+                assert 0
+
+            for _ in range(extra):
+                buf.writebin("B", bc[i])
+                i += 1
+
+        log.debug("pack_bytecode: out: buf: %s", buf.getvalue())
+
+
     def write_code(self, code):
-        buf = self.pack_code(code)
+        buf = self.pack_prelude(code)
+        # Header stores original in-memory bytecode len, not packed len
+        bc_len = len(buf.getvalue()) + len(code.co_code)
+        self.pack_bytecode(code, buf)
 
         bc = buf.getvalue()
-        self.write_uint(len(bc))
+        # len << 2 | kind
+        self.write_uint(bc_len << 2)
         self.f.write(bc)
 
         self.write_qstr(code.co_name)
         self.write_qstr(code.co_filename)
-        for n in code.co_names:
-            self.write_qstr(n)
 
         assert code.mpy_codeobjs == ()
 

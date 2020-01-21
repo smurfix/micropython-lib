@@ -1,5 +1,5 @@
-srctype = micropython-lib
+srctype = pycopy-lib
 type = package
-version = 0.8.2
+version = 0.9.1
 author = Paul Sokolovsky
 depends = ffilib, errno, stat, os.path

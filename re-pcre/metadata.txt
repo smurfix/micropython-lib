@@ -1,6 +1,6 @@
 name = re
-srctype = micropython-lib
+srctype = pycopy-lib
 type = module
-version = 0.4
+version = 0.6
 author = Paul Sokolovsky
 depends = ffilib
